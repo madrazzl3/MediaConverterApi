@@ -11,10 +11,9 @@ builder.Services.AddSingleton<Stratis.MediaConverterApi.MediaConverterSettings>(
     new Stratis.MediaConverterApi.MediaConverterSettings()
     {
         BlobConnectionString = Environment.GetEnvironmentVariable("BLOB_CONNECTION") ?? "",
-        BlobContainerName = "nftwallet",
-        CacheDatabaseFileName = Environment.GetEnvironmentVariable("CACHE_DB") ?? "~/images-cache.db",
-        FFmpegExecutablePath = Environment.GetEnvironmentVariable("FFMPEG_EXECUTABLE_PATH") ?? "/usr/bin/ffmpeg",
-        ConverterTargetExtension = "mp4"
+        BlobContainerName = Environment.GetEnvironmentVariable("BLOB_CONTAINER") ?? "nftwallet",
+        CacheDatabaseFileName = Environment.GetEnvironmentVariable("CACHE_DB") ?? "media-cache.db",
+        FFmpegExecutablePath = Environment.GetEnvironmentVariable("FFMPEG_EXECUTABLE_PATH") ?? "/usr/bin/ffmpeg"
     }
 );
 

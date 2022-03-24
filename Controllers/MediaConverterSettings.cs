@@ -9,7 +9,5 @@ namespace Stratis.MediaConverterApi
         public string CacheDatabaseFileName { get; set; }
 
         public string FFmpegExecutablePath { get; set; }
-
-        public string ConverterTargetExtension { get; set; }
     }
 }
