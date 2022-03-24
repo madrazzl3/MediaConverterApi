@@ -5,7 +5,7 @@ namespace Stratis.MediaConverterApi
     {
         public static async Task DownloadFormFileAsync(IFormFile formFile, string filePath, CancellationToken cancellationToken)
         {
-            using (var fs = new FileStream(filePath, FileMode.CreateNew))
+            using (var fs = new FileStream(filePath, FileMode.OpenOrCreate))
             {
                 await formFile.CopyToAsync(fs, cancellationToken);
             }
@@ -16,7 +16,7 @@ namespace Stratis.MediaConverterApi
             using (HttpClient client = new HttpClient())
             {
                 var response = await client.GetAsync(link, cancellationToken);
-                using (var fs = new FileStream(filePath, FileMode.CreateNew))
+                using (var fs = new FileStream(filePath, FileMode.OpenOrCreate))
                 {
                     await response.Content.CopyToAsync(fs, cancellationToken);
                 }
