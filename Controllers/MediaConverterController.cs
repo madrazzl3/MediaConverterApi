@@ -1,10 +1,14 @@
-using Microsoft.AspNetCore.Mvc;
 using System.Collections.Concurrent;
+using Microsoft.AspNetCore.Mvc;
+using Stratis.MediaConverterApi.Models;
 
 namespace Stratis.MediaConverterApi.Controllers;
 
+#pragma warning disable CS1591
+
 [ApiController]
 [Route("[controller]")]
+[Produces("application/json")]
 public class MediaConverterController : ControllerBase
 {
     private readonly ILogger<MediaConverterController> _logger;
@@ -22,25 +26,112 @@ public class MediaConverterController : ControllerBase
         this.mediaStorage = mediaStorage;
     }
 
+    /// <summary>
+    /// Converts files to the predefined file format.
+    /// </summary>
+    /// <param name="files">Files to be converted. The file name must be unique within request.</param>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>A dictionary, where key is a file name and value is a link to the converted file.</returns>
+    /// <remarks>
+    /// Sample request:
+    ///
+    ///     POST /convertFiles
+    ///     Content-Type: multipart/form-data; boundary=---------------------------735323031399963166993862150
+    ///     -----------------------------735323031399963166993862150
+    ///     Content-Disposition: form-data; name="GoldenBox"; filename="goldenbox.gif"
+    ///     Content-Type: image/gif
+    ///
+    ///     ###########Content of goldenbox.gif.###########
+    ///
+    ///     -----------------------------735323031399963166993862150
+    ///     Content-Disposition: form-data; name="SwordPromo"; filename="sword.webm"
+    ///     Content-Type: video/webm
+    ///
+    ///     ###########Content of sword.webm.###########
+    ///
+    ///     -----------------------------735323031399963166993862150--
+    ///
+    /// </remarks>
+    /// <response code="200">Returns the dictionary of source filenames and links to converted media files.</response>
+    /// <response code="204">If no files were provided.</response>
     [HttpPost("/convertFiles")]
-    public async Task<ActionResult<IDictionary<string, string>>> ConvertFiles(IFormFileCollection files, CancellationToken cancellationToken)
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<ActionResult<FormFilesConversionResult>> ConvertFiles(IFormFileCollection files, CancellationToken cancellationToken = default(CancellationToken))
     {
-        return await MapAsync(files, key => key.FileName, ConvertFormFile, cancellationToken);
+        if (files.Count == 0)
+        {
+            return NoContent();
+        }
+
+        return Ok(new FormFilesConversionResult()
+        {
+            Links = await MapAsync(files, key => key.FileName, ConvertFormFile, cancellationToken)
+        });
     }
 
+
+    /// <summary>
+    /// Converts files from links to the predefined file format.
+    /// </summary>
+    /// <param name="request">Links to files to be converted.</param>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>A dictionary, where key is a link to the source file and value is a link to the converted file.</returns>
+    /// <remarks>
+    /// Sample request:
+    ///
+    ///     POST /convertLinks
+    ///     {
+    ///         [
+    ///             "https://i.ibb.co/s9hbRXz/37-Cryborg.gif",
+    ///             "https://domain.com/somevideo.webm"
+    ///         ]
+    ///     }
+    ///
+    /// </remarks>
+    /// <response code="200">Returns the dictionary of the source filenames and links to the converted media files.</response>
+    /// <response code="204">If no files were provided.</response>
     [HttpPost("/convertLinks")]
-    public async Task<ActionResult<IDictionary<string, string>>> ConvertLinks(IEnumerable<string> links, CancellationToken cancellationToken)
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<ActionResult<LinksConversionResult>> ConvertLinks([FromBody] LinksConversionRequest request, CancellationToken cancellationToken = default(CancellationToken))
     {
-        return await MapAsync(links, key => key, ConvertLink, cancellationToken);
+        var links = request.Links;
+
+        if (links.Count == 0)
+        {
+            return NoContent();
+        }
+
+        return Ok(new LinksConversionResult()
+        {
+            Links = await MapAsync(links, key => key, ConvertLink, cancellationToken)
+        });
     }
 
-    private async Task<ConcurrentDictionary<KeyMapType, ValueType>> MapAsync<KeyType, KeyMapType, ValueType>(IEnumerable<KeyType> keys, Func<KeyType, KeyMapType> keyTransformation, Func<KeyType, CancellationToken, Task<ValueType>> mapper, CancellationToken cancellationToken)
+    private async Task<ConcurrentDictionary<KeyMapType, ValueType>> MapAsync<KeyType, KeyMapType, ValueType>(
+        IEnumerable<KeyType> keys,
+        Func<KeyType, KeyMapType> keyTransformation,
+        Func<KeyType, CancellationToken,
+        Task<ValueType>> mapper,
+        CancellationToken cancellationToken)
+        where KeyType : notnull
+        where KeyMapType : notnull
     {
         ConcurrentDictionary<KeyMapType, ValueType> results = new ConcurrentDictionary<KeyMapType, ValueType>();
 
         await Task.Run(() => Parallel.ForEachAsync(keys, cancellationToken, async (key, token) =>
         {
-            results[keyTransformation(key)] = await mapper(key, token);
+            try
+            {
+                var newKey = keyTransformation(key);
+                results[newKey] = await mapper(key, token);
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(0, e, "Error occured during convertion of the key: {key}", key);
+                return;
+            }
         }));
 
         return results;
@@ -121,3 +212,5 @@ public class MediaConverterController : ControllerBase
         }
     }
 }
+
+#pragma warning restore CS1591

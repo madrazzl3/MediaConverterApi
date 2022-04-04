@@ -1,3 +1,8 @@
+using System.Reflection;
+using Microsoft.OpenApi.Models;
+using Stratis.MediaConverterApi;
+using Stratis.MediaConverterApi.Controllers;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
@@ -5,10 +10,36 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Version = "v1",
+        Title = "Media converter API",
+        Description = "An ASP.NET Core Web API for converting media files to the appropriate format",
+        Contact = new OpenApiContact
+        {
+            Name = "Stratis Platform",
+            Url = new Uri("https://www.stratisplatform.com/contact/")
+        },
+        License = new OpenApiLicense
+        {
+            Name = "MIT License",
+            Url = new Uri("https://github.com/stratisproject/MediaConverterApi/blob/master/LICENSE")
+        }
+    });
 
-builder.Services.AddSingleton<Stratis.MediaConverterApi.MediaConverterSettings>(
-    new Stratis.MediaConverterApi.MediaConverterSettings()
+    // using System.Reflection;
+    var xmlFilename = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    options.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, xmlFilename));
+
+    options.SchemaFilter<LinksConversionResultSchemaFilter>();
+    options.SchemaFilter<FormFilesConversionResultSchemaFilter>();
+    options.SchemaFilter<LinksConversionRequestSchemaFilter>();
+});
+
+builder.Services.AddSingleton<MediaConverterSettings>(
+    new MediaConverterSettings()
     {
         BlobConnectionString = Environment.GetEnvironmentVariable("BLOB_CONNECTION") ?? "",
         BlobContainerName = Environment.GetEnvironmentVariable("BLOB_CONTAINER") ?? "nftwallet",
@@ -17,10 +48,15 @@ builder.Services.AddSingleton<Stratis.MediaConverterApi.MediaConverterSettings>(
     }
 );
 
-builder.Services.AddScoped<Stratis.MediaConverterApi.IHashProvider, Stratis.MediaConverterApi.SHA256HashProvider>();
-builder.Services.AddScoped<Stratis.MediaConverterApi.IMediaCache, Stratis.MediaConverterApi.LiteDBMediaCache>();
-builder.Services.AddScoped<Stratis.MediaConverterApi.IMediaConverter, Stratis.MediaConverterApi.FFmpegMediaConverter>();
-builder.Services.AddScoped<Stratis.MediaConverterApi.IMediaStorage, Stratis.MediaConverterApi.BlobMediaStorage>();
+builder.Services.AddScoped<IHashProvider, SHA256HashProvider>();
+builder.Services.AddScoped<IMediaCache, LiteDBMediaCache>();
+builder.Services.AddScoped<IMediaConverter, FFmpegMediaConverter>();
+builder.Services.AddScoped<IMediaStorage, BlobMediaStorage>();
+
+builder.Services.AddMvc(options =>
+{
+    options.Filters.Add<OperationCancelledExceptionFilter>();
+});
 
 var app = builder.Build();
 
