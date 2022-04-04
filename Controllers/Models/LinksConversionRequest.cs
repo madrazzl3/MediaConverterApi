@@ -3,7 +3,7 @@ using Swashbuckle.AspNetCore.Annotations;
 
 namespace Stratis.MediaConverterApi.Models;
 
-// [SwaggerSchemaFilter(typeof(LinksConversionRequestSchemaFilter))]
+[SwaggerSchemaFilter(typeof(LinksConversionRequestSchemaFilter))]
 public class LinksConversionRequest
 {
     [JsonPropertyName("links")]
