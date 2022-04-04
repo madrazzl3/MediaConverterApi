@@ -20,19 +20,15 @@ public class LinksConversionResultSchemaFilter : ISchemaFilter
     }
 }
 
-public class FormFilesConversionResultSchemaFilter : ISchemaFilter
+public class ConversionStartedResponseSchemaFilter : ISchemaFilter
 {
     public void Apply(OpenApiSchema schema, SchemaFilterContext context)
     {
-        if (context.Type != typeof(FormFilesConversionResult)) return;
+        if (context.Type != typeof(ConversionStartedResponse)) return;
 
         schema.Example = new OpenApiObject
         {
-            ["links"] = new OpenApiObject
-            {
-                ["sword.gif"] = new OpenApiString("https://stratisstorage.blob.core.windows.net/conversions/6bb3dcf9d9e247248e1bdaf1b27b4e47.mp4"),
-                ["somevideo.webm"] = new OpenApiString("https://stratisstorage.blob.core.windows.net/conversions/28b3dcf9d95647248e1bdaf1b27b4e47.mp4"),
-            }
+            ["requestId"] = new OpenApiString(Guid.NewGuid().ToString())
         };
     }
 }

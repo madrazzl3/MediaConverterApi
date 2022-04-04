@@ -1,4 +1,6 @@
 using System.Reflection;
+using MassTransit;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.OpenApi.Models;
 using Stratis.MediaConverterApi;
 using Stratis.MediaConverterApi.Controllers;
@@ -34,8 +36,8 @@ builder.Services.AddSwaggerGen(options =>
     options.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, xmlFilename));
 
     options.SchemaFilter<LinksConversionResultSchemaFilter>();
-    options.SchemaFilter<FormFilesConversionResultSchemaFilter>();
     options.SchemaFilter<LinksConversionRequestSchemaFilter>();
+    options.SchemaFilter<ConversionStartedResponseSchemaFilter>();
 });
 
 builder.Services.AddSingleton<MediaConverterSettings>(
@@ -44,18 +46,35 @@ builder.Services.AddSingleton<MediaConverterSettings>(
         BlobConnectionString = Environment.GetEnvironmentVariable("BLOB_CONNECTION") ?? "",
         BlobContainerName = Environment.GetEnvironmentVariable("BLOB_CONTAINER") ?? "nftwallet",
         CacheDatabaseFileName = Environment.GetEnvironmentVariable("CACHE_DB") ?? "media-cache.db",
-        FFmpegExecutablePath = Environment.GetEnvironmentVariable("FFMPEG_EXECUTABLE_PATH") ?? "/usr/bin/ffmpeg"
+        FFmpegExecutablePath = Environment.GetEnvironmentVariable("FFMPEG_EXECUTABLE_PATH") ?? "/usr/bin/ffmpeg",
+        RequestsCacheTimeout = 15.0
     }
 );
+
+builder.Services.AddSingleton<IMemoryCache>(_ => new MemoryCache(new MemoryCacheOptions()));
+builder.Services.AddSingleton<IConversionRequestsStorage, InMemoryConversionRequestsStorage>();
 
 builder.Services.AddScoped<IHashProvider, SHA256HashProvider>();
 builder.Services.AddScoped<IMediaCache, LiteDBMediaCache>();
 builder.Services.AddScoped<IMediaConverter, FFmpegMediaConverter>();
 builder.Services.AddScoped<IMediaStorage, BlobMediaStorage>();
+builder.Services.AddScoped<IMediaConverterAPI, MediaConverterAPI>();
 
 builder.Services.AddMvc(options =>
 {
     options.Filters.Add<OperationCancelledExceptionFilter>();
+});
+
+builder.Services.AddMassTransit(busRegistrationConfigurator =>
+{
+    // Register consumers that will run in the same process as the Web API.
+    busRegistrationConfigurator.AddConsumer<ConversionRequestsConsumer>();
+
+    // In memory transport to handle messages 
+    busRegistrationConfigurator.UsingInMemory((context, cfg) =>
+    {
+        cfg.ConfigureEndpoints(context);
+    });
 });
 
 var app = builder.Build();

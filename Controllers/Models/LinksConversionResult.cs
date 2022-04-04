@@ -7,5 +7,5 @@ namespace Stratis.MediaConverterApi.Models;
 public class LinksConversionResult
 {
     [JsonPropertyName("links")]
-    public IDictionary<string, string> Links;
+    public IDictionary<string, string> Links { get; set; }
 }

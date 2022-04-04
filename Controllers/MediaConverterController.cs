@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Mvc;
 using Stratis.MediaConverterApi.Models;
 
@@ -12,26 +11,20 @@ namespace Stratis.MediaConverterApi.Controllers;
 public class MediaConverterController : ControllerBase
 {
     private readonly ILogger<MediaConverterController> _logger;
-    private readonly IHashProvider hashProvider;
-    private readonly IMediaCache mediaCache;
-    private readonly IMediaConverter mediaConverter;
-    private readonly IMediaStorage mediaStorage;
+    private readonly IMediaConverterAPI mediaConverterAPI;
 
-    public MediaConverterController(ILogger<MediaConverterController> logger, IHashProvider hashProvider, IMediaCache mediaCache, IMediaConverter mediaConverter, IMediaStorage mediaStorage)
+    public MediaConverterController(ILogger<MediaConverterController> logger, IMediaConverterAPI mediaConverterAPI)
     {
         _logger = logger;
-        this.hashProvider = hashProvider;
-        this.mediaCache = mediaCache;
-        this.mediaConverter = mediaConverter;
-        this.mediaStorage = mediaStorage;
+        this.mediaConverterAPI = mediaConverterAPI;
     }
 
     /// <summary>
-    /// Converts files to the predefined file format.
+    /// Requests conversion of files to the predefined file format.
     /// </summary>
     /// <param name="files">Files to be converted. The file name must be unique within request.</param>
     /// <param name="cancellationToken">The request cancellation token.</param>
-    /// <returns>A dictionary, where key is a file name and value is a link to the converted file.</returns>
+    /// <returns>Request ID</returns>
     /// <remarks>
     /// Sample request:
     ///
@@ -52,163 +45,112 @@ public class MediaConverterController : ControllerBase
     ///     -----------------------------735323031399963166993862150--
     ///
     /// </remarks>
-    /// <response code="200">Returns the dictionary of source filenames and links to converted media files.</response>
+    /// <response code="200">Returns request ID.</response>
     /// <response code="204">If no files were provided.</response>
     [HttpPost("/convertFiles")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    public async Task<ActionResult<FormFilesConversionResult>> ConvertFiles(IFormFileCollection files, CancellationToken cancellationToken = default(CancellationToken))
+    public async Task<ActionResult<ConversionStartedResponse>> ConvertFiles(IFormFileCollection files, CancellationToken cancellationToken = default(CancellationToken))
     {
         if (files.Count == 0)
         {
             return NoContent();
         }
 
-        return Ok(new FormFilesConversionResult()
+        return Ok(new ConversionStartedResponse()
         {
-            Links = await MapAsync(files, key => key.FileName, ConvertFormFile, cancellationToken)
+            RequestID = await mediaConverterAPI.RequestFormFilesConversion(files, cancellationToken)
         });
     }
 
 
     /// <summary>
-    /// Converts files from links to the predefined file format.
+    /// Requests conversion from the links to the predefined file format.
     /// </summary>
     /// <param name="request">Links to files to be converted.</param>
     /// <param name="cancellationToken">The request cancellation token.</param>
-    /// <returns>A dictionary, where key is a link to the source file and value is a link to the converted file.</returns>
+    /// <returns>Request ID.</returns>
     /// <remarks>
     /// Sample request:
     ///
     ///     POST /convertLinks
     ///     {
-    ///         [
+    ///         "links" : [
     ///             "https://i.ibb.co/s9hbRXz/37-Cryborg.gif",
     ///             "https://domain.com/somevideo.webm"
     ///         ]
     ///     }
     ///
     /// </remarks>
-    /// <response code="200">Returns the dictionary of the source filenames and links to the converted media files.</response>
+    /// <response code="200">Returns request ID.</response>
     /// <response code="204">If no files were provided.</response>
     [HttpPost("/convertLinks")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    public async Task<ActionResult<LinksConversionResult>> ConvertLinks([FromBody] LinksConversionRequest request, CancellationToken cancellationToken = default(CancellationToken))
+    public async Task<ActionResult<ConversionStartedResponse>> ConvertLinks([FromBody] LinksConversionRequest request, CancellationToken cancellationToken = default(CancellationToken))
     {
         var links = request.Links;
 
-        if (links.Count == 0)
+        if (links == null || links.Count == 0)
         {
             return NoContent();
         }
 
-        return Ok(new LinksConversionResult()
+        return Ok(new ConversionStartedResponse()
         {
-            Links = await MapAsync(links, key => key, ConvertLink, cancellationToken)
+            RequestID = await mediaConverterAPI.RequestLinksConversion(request, cancellationToken)
         });
     }
 
-    private async Task<ConcurrentDictionary<KeyMapType, ValueType>> MapAsync<KeyType, KeyMapType, ValueType>(
-        IEnumerable<KeyType> keys,
-        Func<KeyType, KeyMapType> keyTransformation,
-        Func<KeyType, CancellationToken,
-        Task<ValueType>> mapper,
-        CancellationToken cancellationToken)
-        where KeyType : notnull
-        where KeyMapType : notnull
+    /// <summary>
+    /// Gets state of file conversion request.
+    /// </summary>
+    /// <param name="requestID">Request ID</param>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>Request ID</returns>
+    /// <remarks>
+    /// Sample request:
+    ///
+    ///     GET /result?requestId=c89574ce-b4ad-4437-9545-f7550ef88a11
+    ///
+    /// </remarks>
+    /// <response code="200">Returns the dictionary of source items and links to converted media files.</response>
+    /// <response code="204">If no files were converted yet.</response>
+    /// <response code="206">If only part of the files were converted.</response>
+    /// <response code="404">If request id wasn't found.</response>
+    [HttpGet("/result")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status206PartialContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<LinksConversionResult>> GetConversionResult([FromQuery(Name = "requestId")] string requestID, CancellationToken cancellationToken = default(CancellationToken))
     {
-        ConcurrentDictionary<KeyMapType, ValueType> results = new ConcurrentDictionary<KeyMapType, ValueType>();
+        var state = await mediaConverterAPI.AccessConversionState(requestID, cancellationToken);
 
-        await Task.Run(() => Parallel.ForEachAsync(keys, cancellationToken, async (key, token) =>
+        if (state == null)
         {
-            try
+            return NotFound();
+        }
+
+        var result = new LinksConversionResult()
+        {
+            Links = state.ConvertedEntries
+        };
+
+        if (state.Status == ConversionState.ConversionStatus.Pending)
+        {
+            if (result.Links.Count > 0)
             {
-                var newKey = keyTransformation(key);
-                results[newKey] = await mapper(key, token);
+                return StatusCode(StatusCodes.Status206PartialContent, result);
             }
-            catch (Exception e)
+            else
             {
-                _logger.LogError(0, e, "Error occured during convertion of the key: {key}", key);
-                return;
+                return NoContent();
             }
-        }));
-
-        return results;
-    }
-
-    private async Task<string> ConvertFormFile(IFormFile formFile, CancellationToken cancellationToken)
-    {
-        if (formFile == null || formFile.Length <= 0)
-        {
-            throw new ArgumentException("Form file can not be empty.");
         }
-
-        var filePath = Path.GetTempFileName();
-
-        try
+        else
         {
-            await FileUtils.DownloadFormFileAsync(formFile, filePath, cancellationToken);
-            var convertedMediaLink = await ProcessMediaFile(filePath, cancellationToken);
-            return convertedMediaLink;
-        }
-        finally
-        {
-            FileUtils.DisposeTemporaryFile(filePath);
-        }
-    }
-
-    private async Task<string> ConvertLink(string link, CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrEmpty(link))
-        {
-            throw new ArgumentException("Link can not be empty.");
-        }
-
-        var cachedMedia = await mediaCache.TryFindByLink(link);
-        if (cachedMedia != null)
-        {
-            return cachedMedia;
-        }
-
-        var filePath = Path.GetTempFileName();
-
-        try
-        {
-            await FileUtils.DownloadFileAsync(link, filePath, cancellationToken);
-            var convertedMediaLink = await ProcessMediaFile(filePath, cancellationToken);
-            await mediaCache.CacheByLink(link, convertedMediaLink);
-            return convertedMediaLink;
-        }
-        finally
-        {
-            FileUtils.DisposeTemporaryFile(filePath);
-        }
-    }
-
-    private async Task<string> ProcessMediaFile(string filePath, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        var fileHash = hashProvider.GetFileHash(filePath);
-
-        var cachedMedia = await mediaCache.TryFindByHash(fileHash);
-        if (cachedMedia != null)
-        {
-            return cachedMedia;
-        }
-
-        var convertedMediaFile = await mediaConverter.Convert(filePath, cancellationToken);
-
-        try
-        {
-            var convertedMediaLink = await mediaStorage.Store(convertedMediaFile, cancellationToken);
-            await mediaCache.CacheByHash(fileHash, convertedMediaLink);
-            return convertedMediaLink;
-        }
-        finally
-        {
-            FileUtils.DisposeTemporaryFile(convertedMediaFile);
+            return Ok(result);
         }
     }
 }
