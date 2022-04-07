@@ -1,5 +1,6 @@
 using System.Reflection;
 using MassTransit;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.OpenApi.Models;
 using Stratis.MediaConverterApi;
@@ -75,6 +76,11 @@ builder.Services.AddMassTransit(busRegistrationConfigurator =>
     {
         cfg.ConfigureEndpoints(context);
     });
+});
+
+builder.Services.Configure<KestrelServerOptions>(options =>
+{
+    options.Limits.MaxRequestBodySize = 1024 * 1024 * 1024; // == 1 GB, default value is 30 MB
 });
 
 var app = builder.Build();

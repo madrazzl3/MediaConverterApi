@@ -52,14 +52,16 @@ public class MediaConverterController : ControllerBase
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<ActionResult<ConversionStartedResponse>> ConvertFiles(IFormFileCollection files, CancellationToken cancellationToken = default(CancellationToken))
     {
-        if (files.Count == 0)
+        var formFiles = HttpContext.Request.Form.Files;
+
+        if (formFiles.Count == 0)
         {
             return NoContent();
         }
 
         return Ok(new ConversionStartedResponse()
         {
-            RequestID = await mediaConverterAPI.RequestFormFilesConversion(files, cancellationToken)
+            RequestID = await mediaConverterAPI.RequestFormFilesConversion(formFiles, cancellationToken)
         });
     }
 
