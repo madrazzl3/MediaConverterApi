@@ -4,7 +4,7 @@ namespace Stratis.MediaConverterApi
 {
     public class FFmpegMediaConverter : IMediaConverter
     {
-        readonly public string TargetFileExtension = "mp4";
+        readonly public string TargetFileExtension = "webm";
 
         readonly public double MAX_FPS = 30.0;
         readonly public int MAX_WIDTH = 1600;
@@ -39,12 +39,13 @@ namespace Stratis.MediaConverterApi
 
             var options = new ConversionOptions()
             {
-                VideoFormat = FFmpeg.NET.Enums.VideoFormat.mp4,
+                VideoFormat = FFmpeg.NET.Enums.VideoFormat.webm,
+                VideoCodec = FFmpeg.NET.Enums.VideoCodec.libvpx,
+                ExtraArguments = "-auto-alt-ref 0",
                 VideoFps = (metaData.VideoData.Fps > MAX_FPS) ? ((int)MAX_FPS) : null,
                 VideoSize = needResize ? FFmpeg.NET.Enums.VideoSize.Custom : FFmpeg.NET.Enums.VideoSize.Default,
                 CustomWidth = needResize ? newWidth : null,
-                CustomHeight = needResize ? newHeight : null,
-                ExtraArguments = "-c:v libx264 -profile:v baseline -strict -2"
+                CustomHeight = needResize ? newHeight : null
             };
 
             return options;
