@@ -43,7 +43,8 @@ namespace Stratis.MediaConverterApi
                 VideoFps = (metaData.VideoData.Fps > MAX_FPS) ? ((int)MAX_FPS) : null,
                 VideoSize = needResize ? FFmpeg.NET.Enums.VideoSize.Custom : FFmpeg.NET.Enums.VideoSize.Default,
                 CustomWidth = needResize ? newWidth : null,
-                CustomHeight = needResize ? newHeight : null
+                CustomHeight = needResize ? newHeight : null,
+                ExtraArguments = "-c:v libx264 -profile:v baseline -strict -2"
             };
 
             return options;
